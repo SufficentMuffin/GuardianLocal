@@ -187,7 +187,7 @@ class Broker:
                 "unique_id": f"edenic_{device_id}_{key}",
                 "state_topic": f"{base}/state",
                 "availability_topic": avail,
-                "value_template": "{{ value_json.values.%s | default(none) }}" % key,
+                "value_template": "{{ value_json['values'].get('%s') }}" % key,
                 "suggested_display_precision": precision,
                 "state_class": "measurement",
                 "icon": icon,
