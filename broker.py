@@ -261,12 +261,48 @@ class Broker:
         LOG.info("Announced %s to Home Assistant (writes=%s)", device_id, self.allow_writes)
 
     # -- device data -------------------------------------------------------
+    def on_attribute_request(self, session, topic, payload):
+        """The meter asks for its attributes at startup and waits for a reply.
+
+        ThingsBoard shape: it publishes to .../attributes/request/<id> with
+        {"clientKeys": "a,b", "sharedKeys": "c,d"} and expects an answer on
+        .../attributes/response/<id>. Without one it never sends telemetry.
+        """
+        request_id = topic.rsplit("/", 1)[-1]
+        try:
+            req = json.loads(payload) if payload else {}
+        except ValueError:
+            req = {}
+        LOG.info("Attribute request %s from %s: %s", request_id, session.device_id, req)
+
+        known = self.attributes.get(session.device_id, {})
+
+        def pick(spec):
+            if not spec:
+                return {}
+            keys = [k.strip() for k in spec.split(",") if k.strip()]
+            return {k: known[k] for k in keys if k in known}
+
+        answer = {}
+        shared = pick(req.get("sharedKeys", ""))
+        client = pick(req.get("clientKeys", ""))
+        if shared:
+            answer["shared"] = shared
+        if client:
+            answer["client"] = client
+
+        response_topic = f"v1/devices/me/attributes/response/{request_id}"
+        session.write(build_publish(response_topic, json.dumps(answer)))
+        LOG.info("Answered on %s with %s", response_topic, answer)
+
+    def mark_device(self, session):
+        session.is_device = True
+        self.devices[session.device_id] = session
+        self.announce(session.device_id)
+
     def on_device_message(self, session, topic, payload):
         device_id = session.device_id
-        if session.is_device is False:
-            session.is_device = True
-        self.devices[device_id] = session
-        self.announce(device_id)
+        self.mark_device(session)
 
         try:
             data = json.loads(payload)
@@ -446,8 +482,12 @@ class Session:
         LOG.debug("PUBLISH %s -> %r", topic, payload[:200])
 
         if topic.startswith(DEVICE_TOPIC_PREFIX):
-            # A meter reporting telemetry or attributes.
-            self.broker.on_device_message(self, topic, payload.decode("utf-8", "replace"))
+            text = payload.decode("utf-8", "replace")
+            if "/attributes/request/" in topic:
+                self.broker.mark_device(self)
+                self.broker.on_attribute_request(self, topic, text)
+            else:
+                self.broker.on_device_message(self, topic, text)
         elif "/set/" in topic and topic.startswith("edenic2mqtt/"):
             self.broker.on_command(topic, payload)
         else:
