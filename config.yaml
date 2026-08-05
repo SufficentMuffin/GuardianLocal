@@ -1,6 +1,6 @@
 ---
 name: Edenic Local Broker
-version: 0.3.2
+version: 0.3.3
 slug: edenic_broker
 description: >-
   Runs a tiny MQTT broker that Bluelab Guardian Wi-Fi meters can connect to
