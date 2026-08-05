@@ -1,7 +1,7 @@
 ---
-name: Guardian Local Broker
-version: 0.4.1
-slug: guardian_broker
+name: Edenic Local Broker
+version: 0.4.2
+slug: edenic_broker
 description: >-
   Runs a tiny MQTT broker that Bluelab Guardian Wi-Fi meters can connect to
   after a DNS rewrite, and exposes their pH / EC / temperature in Home
@@ -25,7 +25,9 @@ options:
   discovery_prefix: homeassistant
   log_level: info
   allow_writes: false
+  ack_attributes: false
 schema:
   discovery_prefix: str
   log_level: list(debug|info|warning|error)
   allow_writes: bool
+  ack_attributes: bool

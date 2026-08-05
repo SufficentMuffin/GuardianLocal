@@ -4,5 +4,6 @@ export LISTEN_PORT=1883
 export DISCOVERY_PREFIX="$(bashio::config 'discovery_prefix')"
 export LOG_LEVEL="$(bashio::config 'log_level')"
 export ALLOW_WRITES="$(bashio::config 'allow_writes')"
+export ACK_ATTRIBUTES="$(bashio::config 'ack_attributes')"
 
 exec python3 /broker.py

@@ -136,8 +136,9 @@ def topic_matches(filt, topic):
 class Broker:
     """Holds every session, the subscription table and retained messages."""
 
-    def __init__(self, allow_writes):
+    def __init__(self, allow_writes, ack_attributes=False):
         self.allow_writes = allow_writes
+        self.ack_attributes = ack_attributes
         self.sessions = []            # all connected sessions
         self.devices = {}             # device_id -> Session (meters only)
         self.retained = {}            # topic -> payload bytes
@@ -278,14 +279,16 @@ class Broker:
         known = self.attributes.get(session.device_id, {})
 
         def pick(spec):
-            if not spec:
-                return {}
-            keys = [k.strip() for k in spec.split(",") if k.strip()]
+            keys = [k.strip() for k in spec.split(",") if k.strip()] if spec else []
             return {k: known[k] for k in keys if k in known}
 
         answer = {}
-        shared = pick(req.get("sharedKeys", ""))
-        client = pick(req.get("clientKeys", ""))
+        if not req:
+            # An empty request asks for everything we have.
+            shared, client = dict(known), {}
+        else:
+            shared = pick(req.get("sharedKeys", ""))
+            client = pick(req.get("clientKeys", ""))
         if shared:
             answer["shared"] = shared
         if client:
@@ -336,6 +339,16 @@ class Broker:
                 f"edenic2mqtt/{device_id}/attributes", json.dumps(store), retain=True
             )
             LOG.info("Attributes %s: %s", device_id, data)
+            if self.ack_attributes:
+                # Experiment: Edenic's payloads carry correlationId/status,
+                # which suggests the server confirms each setting. Echo the
+                # plain values back in case the meter is waiting for that.
+                echo = {
+                    k: unwrap(v) for k, v in data.items() if k.startswith("setting.")
+                }
+                if echo:
+                    session.write(build_publish(TOPIC_ATTRIBUTES, json.dumps(echo)))
+                    LOG.info("Echoed settings back to %s: %s", device_id, echo)
         else:
             LOG.warning("Unhandled payload on %s: %r", topic, payload[:200])
 
@@ -556,15 +569,17 @@ async def main():
         format="%(asctime)s %(levelname)s %(message)s",
     )
     allow_writes = os.environ.get("ALLOW_WRITES", "false").lower() == "true"
-    broker = Broker(allow_writes)
+    ack_attributes = os.environ.get("ACK_ATTRIBUTES", "false").lower() == "true"
+    broker = Broker(allow_writes, ack_attributes)
     port = int(os.environ.get("LISTEN_PORT", "1883"))
 
     server = await asyncio.start_server(
         lambda r, w: Session(r, w, broker).run(), "0.0.0.0", port
     )
     LOG.info(
-        "Broker listening on 0.0.0.0:%s (writes %s)",
+        "Broker listening on 0.0.0.0:%s (writes %s, ack_attributes %s)",
         port, "enabled" if allow_writes else "disabled",
+        "on" if ack_attributes else "off",
     )
     LOG.info("Point both the Guardian and the MQTT integration here.")
 
