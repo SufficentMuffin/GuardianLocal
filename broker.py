@@ -317,6 +317,16 @@ class Broker:
         if session is None:
             LOG.warning("Command for %s but the meter is offline", device_id)
             return
+        # All six thresholds are sent as one block, so we must know the
+        # current values first - otherwise changing one would zero the rest.
+        known = self.attributes.get(device_id, {})
+        if not any(k.startswith("setting.") for k in known):
+            LOG.warning(
+                "Refusing to write to %s: it has not reported its current "
+                "settings yet. Change a threshold on the meter itself once, "
+                "or wait for it to publish attributes.", device_id,
+            )
+            return
         value = payload.decode() if isinstance(payload, bytes) else payload
         if key == "alarms":
             overrides = {"alarms": value.upper() in ("ON", "TRUE", "1")}
