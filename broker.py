@@ -307,7 +307,22 @@ class Broker:
         try:
             data = json.loads(payload)
         except ValueError:
-            LOG.warning("Unparsed payload on %s: %r", topic, payload[:120])
+            LOG.warning("Non-JSON payload on %s: %r", topic, payload[:200])
+            return
+
+        # Some firmware sends telemetry as a list of samples.
+        if isinstance(data, list):
+            for entry in data:
+                if isinstance(entry, dict) and "values" in entry:
+                    self.publish(
+                        f"edenic2mqtt/{device_id}/state", json.dumps(entry), retain=True
+                    )
+                    self.publish(
+                        f"edenic2mqtt/{device_id}/availability", "online", retain=True
+                    )
+                    LOG.info("Telemetry %s: %s", device_id, entry["values"])
+                else:
+                    LOG.warning("Unhandled list entry on %s: %r", topic, entry)
             return
 
         if isinstance(data, dict) and "values" in data:
@@ -321,6 +336,8 @@ class Broker:
                 f"edenic2mqtt/{device_id}/attributes", json.dumps(store), retain=True
             )
             LOG.info("Attributes %s: %s", device_id, data)
+        else:
+            LOG.warning("Unhandled payload on %s: %r", topic, payload[:200])
 
     def desired_settings(self, device_id, overrides=None):
         """Edenic always sends all six thresholds plus the master together."""
@@ -483,6 +500,7 @@ class Session:
 
         if topic.startswith(DEVICE_TOPIC_PREFIX):
             text = payload.decode("utf-8", "replace")
+            LOG.info("Meter published on %s (%d bytes)", topic, len(payload))
             if "/attributes/request/" in topic:
                 self.broker.mark_device(self)
                 self.broker.on_attribute_request(self, topic, text)

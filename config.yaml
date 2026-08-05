@@ -1,6 +1,6 @@
 ---
 name: Guardian Local Broker
-version: 0.4.0
+version: 0.4.1
 slug: guardian_broker
 description: >-
   Runs a tiny MQTT broker that Bluelab Guardian Wi-Fi meters can connect to
